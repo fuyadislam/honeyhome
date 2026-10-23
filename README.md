@@ -67,7 +67,7 @@ python doctor.py                 # checks everything and tells you how to fix is
 python app.py
 ```
 
-Then open http://localhost:8000 for the dashboard. The MCP endpoint for Alexa+ is at `/mcp`.
+The MCP endpoint for Alexa+ is at `/mcp`.
 
 - **No AWS?** Set `DEMO_MODE=1` in `.env`. Everything runs, with template reports and a browser voice.
 - **With AWS?** Run `aws configure`, enable your Bedrock model (Model access, same region as `AWS_REGION`), set `DEMO_MODE=0`. Polly and SNS use the same credentials.
