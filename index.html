@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HoneyHome: a trap for hackers, watched by AI</title>
+<meta name="description" content="HoneyHome runs decoy devices on your home network to catch attackers, then acts as your AI security analyst on Alexa+. Tamper-evident evidence, MITRE ATT&CK, voice alerts.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a0e;
+    --ink: #e8edf4;
+    --muted: #8294a8;
+    --line: rgba(255,255,255,0.14);
+    --panel: #0e131b;
+    --panel-2: #121926;
+    --edge: #223048;
+    --honey: #e2a53f;
+    --honey-soft: #3a2c12;
+    --danger: #ff5a52;
+    --danger-soft: #3a1714;
+    --warn: #f0b429;
+    --ok: #35c892;
+    --ok-soft: #10342a;
+    --cream: rgb(226,208,177);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-weight: 700; letter-spacing: -0.02em; margin: 0 0 14px; }
+  .serif { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; letter-spacing: 0; }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .eyebrow { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; letter-spacing: 0.22em;
+             text-transform: uppercase; color: var(--honey); margin-bottom: 18px; }
+  p { margin: 0 0 16px; }
+  .muted { color: var(--muted); }
+  a { color: var(--honey); }
+
+  .stage { position: relative; }
+  .pin { position: sticky; top: 0; height: 100vh; overflow: hidden; }
+  canvas.gl, canvas.lines { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  canvas.lines { pointer-events: none; }
+
+  .sign {
+    position: absolute; left: 0; right: 0;
+    padding: 0 8vw; max-width: 1200px; margin: 0 auto;
+    top: 50%; transform: translateY(-50%);
+    opacity: 0; pointer-events: none; will-change: opacity, transform;
+  }
+  .sign.show { pointer-events: auto; }
+  .sign h1 { font-size: clamp(2.8rem, 8vw, 6.5rem); line-height: 0.98; color: var(--ink); }
+  .sign h2 { font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1.04; color: var(--ink); }
+  .sign .big { max-width: 16ch; }
+  .sign p { font-size: clamp(1.05rem, 2vw, 1.35rem); max-width: 46ch; color: #c6d2e0; }
+  .sign .ink { color: var(--ink); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: "JetBrains Mono", monospace; font-size: 0.82rem;
+    border: 1px solid var(--edge); border-radius: 100px; padding: 7px 15px; color: var(--muted);
+    background: rgba(10,14,20,0.5); backdrop-filter: blur(4px);
+  }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--honey);
+            box-shadow: 0 0 10px var(--honey); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+  .btn {
+    font: inherit; font-weight: 500; text-decoration: none; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border-radius: 11px;
+    border: 1px solid var(--honey); background: var(--honey); color: #15110a;
+  }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--edge); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn svg { width: 17px; height: 17px; fill: currentColor; }
+
+  .scroll-hint { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+                 font-family: "JetBrains Mono", monospace; font-size: 0.72rem; letter-spacing: 0.2em;
+                 color: var(--muted); text-transform: uppercase; opacity: 0.7; }
+
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: 26px; max-width: 980px; }
+  @media (max-width: 760px) { .three-col { grid-template-columns: 1fr; gap: 16px; } }
+  .three-col .c { border-top: 2px solid var(--honey); padding-top: 14px; }
+  .three-col h3 { font-size: 1.1rem; margin-bottom: 6px; }
+  .three-col p { font-size: 0.95rem; margin: 0; }
+
+  .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 60px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; padding-top: env(safe-area-inset-top, 0px);
+            background: linear-gradient(var(--bg), transparent); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.08rem; }
+  .brand svg { width: 22px; height: 22px; }
+  .topbar .r { display: flex; gap: 10px; align-items: center; }
+  .topbar a { text-decoration: none; }
+
+  .board { position: relative; z-index: 2; background: var(--bg); padding: 70px 24px 40px; }
+  .board .wrap { max-width: 1180px; margin: 0 auto; }
+  .board-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
+  .board-head h2 { font-size: clamp(1.8rem, 4vw, 2.6rem); }
+  .status-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 26px; }
+  .chip { font-family: "JetBrains Mono", monospace; font-size: 0.82rem; border: 1px solid var(--edge);
+          border-radius: 8px; padding: 8px 13px; color: var(--muted); background: var(--panel); }
+  .chip b { color: var(--ink); font-weight: 500; }
+  .chip.good b { color: var(--ok); }
+
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; padding: 20px; }
+  .card h3 { font-size: 1rem; font-family: "JetBrains Mono", monospace; letter-spacing: 0.04em;
+             text-transform: uppercase; color: var(--muted); font-weight: 500; }
+
+  .hp-list { display: grid; gap: 8px; margin-top: 8px; }
+  .hp { display: flex; align-items: center; gap: 10px; font-size: 0.92rem; }
+  .hp i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); flex: none; }
+  .hp .mono { color: var(--muted); font-size: 0.82rem; }
+
+  .feed { display: grid; gap: 10px; max-height: 560px; overflow-y: auto; }
+  .event { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; align-items: start;
+           border: 1px solid var(--edge); border-left-width: 4px; border-radius: 10px; padding: 11px 14px;
+           background: var(--panel-2); animation: slidein 0.35s ease; }
+  @keyframes slidein { from { opacity: 0; transform: translateY(-6px); } }
+  .event.low { border-left-color: var(--muted); }
+  .event.medium { border-left-color: var(--warn); }
+  .event.high { border-left-color: var(--danger); background: linear-gradient(90deg, var(--danger-soft), var(--panel-2) 60%); }
+  .event .t { font-family: "JetBrains Mono", monospace; font-size: 0.74rem; color: var(--muted); padding-top: 2px; }
+  .event .main { min-width: 0; }
+  .event .main b { font-weight: 500; }
+  .event .src { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--muted); }
+  .event .att { display: inline-block; font-family: "JetBrains Mono", monospace; font-size: 0.72rem;
+                color: var(--honey); border: 1px solid var(--honey-soft); background: var(--honey-soft);
+                border-radius: 6px; padding: 1px 7px; margin-top: 5px; }
+  .tag { font-family: "JetBrains Mono", monospace; font-size: 0.68rem; letter-spacing: 0.08em;
+         text-transform: uppercase; padding: 3px 8px; border-radius: 6px; height: fit-content; }
+  .tag.low { color: var(--muted); background: rgba(255,255,255,0.04); }
+  .tag.medium { color: var(--warn); background: rgba(240,180,41,0.1); }
+  .tag.high { color: var(--danger); background: rgba(255,90,82,0.12); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .new-badge { font-family: "JetBrains Mono", monospace; font-size: 0.66rem; color: var(--honey);
+               border: 1px solid var(--honey); border-radius: 5px; padding: 1px 5px; margin-left: 6px; }
+
+  .report { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; font-size: 0.82rem;
+            line-height: 1.55; color: var(--ink); background: #06080c; border: 1px solid var(--edge);
+            border-radius: 12px; padding: 18px; max-height: 420px; overflow-y: auto; margin-top: 14px; }
+  .chain { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-family: "JetBrains Mono", monospace; font-size: 0.82rem; }
+  .chain .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .chain.ok .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .chain.bad .dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+  footer { position: relative; z-index: 2; background: var(--bg); border-top: 1px solid var(--edge); padding: 30px 24px; }
+  footer .wrap { max-width: 1180px; margin: 0 auto; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
+  footer p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  .note { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--muted); margin-top: 14px; }
+  .hidden { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pin { position: relative; height: auto; min-height: 100vh; }
+    .sign { position: relative; opacity: 1 !important; transform: none !important; top: auto; padding: 80px 8vw; }
+    .pill i, .hp i { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" stroke="#e2a53f" stroke-width="1.6"/><path d="M9 11.5l2 2 4-4.5" stroke="#e2a53f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    HoneyHome
+  </div>
+  <div class="r">
+    <a class="btn ghost" href="#dashboard" style="padding:8px 15px">Live dashboard</a>
+    <a class="btn ghost" href="https://github.com/fuyadislam/honeyhome" style="padding:8px 15px">GitHub</a>
+  </div>
+</div>
+
+<main>
+  <section class="stage" id="stage">
+    <div class="pin">
+      <canvas class="gl" id="gl"></canvas>
+      <canvas class="lines" id="lines"></canvas>
+
+      <div class="sign" id="s0" style="text-shadow:0 2px 24px rgba(4,7,12,0.9)">
+        <div class="pill"><i></i> Three decoy devices armed on your network</div>
+        <h1 class="serif" style="margin-top:20px">Leave a trap.<br>Catch the hacker.</h1>
+        <p style="margin-top:8px">HoneyHome plants fake, tempting devices on your home Wi-Fi. No one real ever touches them, so whoever does just gave themselves away. Then your AI analyst takes over, on Alexa+.</p>
+        <div class="buttons">
+          <a class="btn" href="#dashboard">See it live</a>
+          <a class="btn ghost" href="https://github.com/fuyadislam/honeyhome">
+            <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            View the code
+          </a>
+        </div>
+        <div class="scroll-hint">Scroll to watch an attack &darr;</div>
+      </div>
+
+      <div class="sign" id="s1">
+        <div class="eyebrow">01 / The bait</div>
+        <h2 class="serif big">A fake camera. A fake router. A fake file server.</h2>
+        <p>Each one looks like a cheap, unpatched device that network intruders love to find. They do nothing useful and hold nothing real. Their only job is to sit quietly and wait to be touched.</p>
+      </div>
+
+      <div class="sign" id="s2">
+        <div class="eyebrow">02 / The catch</div>
+        <h2 class="serif big">The moment anyone knocks, HoneyHome is listening.</h2>
+        <p>It fingerprints the device, spots password guessing and port scans, and names each move with the same MITRE ATT&amp;CK codes a professional SOC uses. Then it speaks up through Alexa, in plain English.</p>
+      </div>
+
+      <div class="sign" id="s3">
+        <div class="eyebrow">03 / The evidence</div>
+        <h2 class="serif big">Every event is sealed in a hash chain.</h2>
+        <p>Each record locks in the one before it with a SHA-256 hash, like links in a chain. Change one old line and every link after it breaks.</p>
+        <div class="three-col">
+          <div class="c"><h3 class="mono">Identify</h3><p class="muted">Maker, device type, and whether it's hiding behind a random address.</p></div>
+          <div class="c"><h3 class="mono">Classify</h3><p class="muted">Brute force, default logins, scans and path traversal, mapped to ATT&amp;CK.</p></div>
+          <div class="c"><h3 class="mono">Report</h3><p class="muted">A full incident report, written on command, ready to hand over.</p></div>
+        </div>
+      </div>
+
+      <div class="sign" id="s4">
+        <div class="eyebrow">04 / Try it yourself</div>
+        <h2 class="serif big">Now watch a real attack hit the traps.</h2>
+        <p>The dashboard below runs the real honeypots. Launch a test attack and watch the devices, the ATT&amp;CK techniques and the evidence chain light up, then ask HoneyHome to report on it.</p>
+        <div class="buttons"><a class="btn" href="#dashboard">Open the dashboard</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="board" id="dashboard">
+    <div class="wrap">
+      <div class="board-head">
+        <div>
+          <div class="eyebrow">Live security operations</div>
+          <h2 class="serif">Your home, under watch.</h2>
+        </div>
+        <div class="buttons">
+          <button class="btn" id="btnAttack">Launch a test attack</button>
+          <button class="btn ghost" id="btnReport">Write incident report</button>
+        </div>
+      </div>
+
+      <div class="status-row" id="statusRow"></div>
+
+      <div class="grid">
+        <div style="display:grid; gap:20px; align-content:start">
+          <div class="card">
+            <h3>Decoy devices</h3>
+            <div class="hp-list" id="hpList"></div>
+          </div>
+          <div class="card">
+            <h3>Evidence chain</h3>
+            <div class="chain ok" id="chain"><span class="dot"></span><span id="chainText">Checking&hellip;</span></div>
+            <p class="note">Every event is hashed to the one before it.</p>
+            <button class="btn ghost" id="btnVerify" style="margin-top:10px; padding:9px 15px">Verify integrity</button>
+          </div>
+          <div class="card">
+            <h3>Analyst</h3>
+            <p class="note" id="aiNote">Checking&hellip;</p>
+            <button class="btn ghost" id="btnSpeak" style="margin-top:6px; padding:9px 15px">Hear the latest summary</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="display:flex; justify-content:space-between; align-items:center">
+            <span>Live activity feed</span>
+            <span class="mono" id="feedCount" style="color:var(--muted); font-size:0.8rem"></span>
+          </h3>
+          <div class="feed" id="feed"><div class="empty">All quiet. Launch a test attack to see HoneyHome work.</div></div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="reportCard" style="margin-top:20px">
+        <h3>Incident report</h3>
+        <div class="report" id="reportText"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>HoneyHome by HKM Fuyad Islam. Built for the Build, Ship, Shape Amazon Developer Hackathon.</p>
+    <div class="buttons">
+      <a class="btn ghost" href="https://github.com/fuyadislam/honeyhome" style="padding:9px 15px">GitHub</a>
+      <a class="btn ghost" href="https://www.linkedin.com/in/fuyadislam" style="padding:9px 15px">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Part 1: the cinematic scroll stage. One WebGL canvas, one rAF loop, driven
+// by a single scroll-progress number. No animation libraries.
+(function stage() {
+  const glCanvas = document.getElementById("gl");
+  const lineCanvas = document.getElementById("lines");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const signs = [...document.querySelectorAll(".sign")];
+  const BEATS = [[0.00,0.16],[0.19,0.35],[0.39,0.55],[0.59,0.75],[0.80,1.00]];
+
+  const gl = glCanvas.getContext("webgl") || glCanvas.getContext("experimental-webgl");
+  if (!gl) { signs.forEach(s => { s.style.opacity = 1; s.style.position = "relative"; s.style.transform = "none"; }); return; }
+
+  const vert = "attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }";
+  const frag = [
+    "precision highp float;",
+    "uniform vec2 uRes; uniform float uTime; uniform float uProg;",
+    "float hash(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }",
+    "float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);",
+    "  float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));",
+    "  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }",
+    "float hexEdge(vec2 p, float s){ p/=s;",
+    "  vec2 a = mod(p, vec2(1.0,1.732)) - vec2(0.5,0.866);",
+    "  vec2 b = mod(p+vec2(0.5,0.866), vec2(1.0,1.732)) - vec2(0.5,0.866);",
+    "  vec2 g = dot(a,a) < dot(b,b) ? a : b;",
+    "  float ang = atan(g.y, g.x); float r = length(g);",
+    "  return cos(floor(0.5 + ang/1.047)*1.047 - ang) * r; }",
+    "void main(){",
+    "  vec2 c = (gl_FragCoord.xy - 0.5*uRes.xy) / uRes.y; float p = uProg;",
+    "  vec3 col = vec3(0.03,0.04,0.055);",
+    "  col += vec3(0.02,0.03,0.05) * (1.0 - length(c));",
+    "  float s = 0.12; float e = hexEdge(c + vec2(uTime*0.01,0.0), s);",
+    "  float cells = smoothstep(0.5,0.46,e);",
+    "  float edges = smoothstep(0.52,0.5,e) - smoothstep(0.5,0.48,e);",
+    "  float arm = smoothstep(0.08,0.5,p);",
+    "  float cid = hash(floor((c+vec2(uTime*0.01,0.0))/(s*1.2)));",
+    "  float live = step(0.75 - arm*0.5, cid) * (0.4 + 0.6*(sin(uTime*2.0+cid*30.0)*0.5+0.5));",
+    "  vec3 honey = vec3(0.89,0.65,0.25);",
+    "  col += edges * honey * (0.18 + arm*0.5);",
+    "  col += cells * honey * live * arm * 0.22;",
+    "  float intr = smoothstep(0.37,0.45,p) * (1.0 - smoothstep(0.72,0.8,p));",
+    "  vec2 ipos = vec2(mix(-0.5,0.5,fract(uTime*0.07)), sin(uTime*0.9)*0.18);",
+    "  float idd = length(c - ipos);",
+    "  col += intr * vec3(1.0,0.25,0.2) * smoothstep(0.05,0.0,idd);",
+    "  col += intr * vec3(1.0,0.3,0.2) * smoothstep(0.14,0.0,idd) * 0.3;",
+    "  float scan = intr * smoothstep(0.012,0.0,abs(c.y - (fract(uTime*0.15)-0.5)));",
+    "  col += scan * vec3(0.2,0.9,0.6) * 0.5;",
+    "  float chainOn = smoothstep(0.57,0.64,p); float links = 0.0;",
+    "  for (int i=0;i<7;i++){ float y=-0.36+float(i)*0.12;",
+    "    float d = length((c-vec2(0.0,y))*vec2(1.0,1.4));",
+    "    float lit = step(float(i)/7.0, fract(uTime*0.2));",
+    "    links += smoothstep(0.03,0.025,abs(d-0.045)) * (0.4+0.6*lit); }",
+    "  col += chainOn * links * vec3(0.3,0.8,0.95) * 0.7;",
+    "  float g = noise(gl_FragCoord.xy*0.9 + uTime*40.0);",
+    "  col += (g-0.5)*0.06;",
+    "  vec3 cream = vec3(0.886,0.816,0.694);",
+    "  float lum = dot(col, vec3(0.299,0.587,0.114));",
+    "  col = mix(col, cream, smoothstep(0.6,1.0,lum)*0.25);",
+    "  gl_FragColor = vec4(col,1.0); }",
+  ].join("\n");
+
+  function compile(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vert));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p");
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const uRes = gl.getUniformLocation(prog, "uRes");
+  const uTime = gl.getUniformLocation(prog, "uTime");
+  const uProg = gl.getUniformLocation(prog, "uProg");
+
+  const lineCtx = lineCanvas.getContext("2d");
+  let dpr = Math.min(devicePixelRatio || 1, 2);
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    [glCanvas, lineCanvas].forEach(cv => { cv.width = innerWidth*dpr; cv.height = innerHeight*dpr; });
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+  }
+  addEventListener("resize", resize); resize();
+
+  const smooth = (a,b,x) => { const t = Math.min(1, Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); };
+
+  function drawLines(p) {
+    const w = lineCanvas.width, h = lineCanvas.height;
+    lineCtx.clearRect(0,0,w,h);
+    lineCtx.strokeStyle = "rgba(255,255,255,0.14)"; lineCtx.lineWidth = 1;
+    const m = 40*dpr, tick = 10*dpr, a = 0.4 + 0.6*Math.sin(p*Math.PI);
+    lineCtx.globalAlpha = a;
+    [[m,m],[w-m,m],[m,h-m],[w-m,h-m]].forEach(([x,y]) => {
+      lineCtx.beginPath();
+      lineCtx.moveTo(x-tick,y); lineCtx.lineTo(x+tick,y);
+      lineCtx.moveTo(x,y-tick); lineCtx.lineTo(x,y+tick);
+      lineCtx.stroke();
+    });
+    lineCtx.globalAlpha = a*0.6;
+    lineCtx.beginPath(); lineCtx.moveTo(m, h*p); lineCtx.lineTo(w-m, h*p); lineCtx.stroke();
+    lineCtx.globalAlpha = 1;
+  }
+
+  let target = 0, prog01 = 0;
+  const stageEl = document.getElementById("stage");
+  function readScroll() {
+    const rect = stageEl.getBoundingClientRect();
+    const total = stageEl.offsetHeight - innerHeight;
+    target = Math.min(1, Math.max(0, -rect.top / Math.max(1, total)));
+  }
+  addEventListener("scroll", readScroll, { passive: true }); readScroll();
+
+  const start = performance.now();
+  function frame() {
+    prog01 += (target - prog01) * 0.12;
+    const p = prog01, time = (performance.now() - start) / 1000;
+    gl.uniform2f(uRes, glCanvas.width, glCanvas.height);
+    gl.uniform1f(uTime, time); gl.uniform1f(uProg, p);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    drawLines(p);
+    signs.forEach((sign, i) => {
+      const [a, b] = BEATS[i], mid = (a+b)/2;
+      let op = Math.min(smooth(a-0.02, a+0.05, p), 1 - smooth(b-0.05, b+0.03, p));
+      if (i === 0 && p < 0.02) op = 1;
+      sign.style.opacity = op.toFixed(3);
+      sign.style.transform = "translateY(" + (-50 + (p-mid)*60).toFixed(1) + "%)";
+      sign.classList.toggle("show", op > 0.5);
+    });
+    requestAnimationFrame(frame);
+  }
+  if (reduceMotion) {
+    gl.uniform2f(uRes, glCanvas.width, glCanvas.height);
+    gl.uniform1f(uTime, 2); gl.uniform1f(uProg, 0.3);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    signs.forEach(s => { s.style.opacity = 1; s.style.position = "relative"; s.style.transform = "none"; s.classList.add("show"); });
+    stageEl.querySelector(".pin").style.position = "relative";
+  } else { frame(); }
+})();
+
+
+// Part 2: the live dashboard
+const $ = (id) => document.getElementById(id);
+const server = { up: false, ai: false };
+let seenSeqs = new Set();
+let usePolly = false;
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(path);
+  return res.json();
+}
+
+let claudeAI = null;
+if (window.claude && window.claude.use) {
+  window.claude.use("sample").then((s) => { if (s) { claudeAI = s; boot(); } }).catch(() => {});
+}
+
+async function checkServer() {
+  try {
+    const s = await api("api/status");
+    server.up = true;
+    server.ai = s.ai_mode === "bedrock";
+    try { usePolly = s.voice_mode === "polly"; } catch (e) {}
+    renderStatus(s);
+    renderHoneypots(s.honeypots);
+    $("aiNote").textContent = server.ai
+      ? "Amazon Bedrock is writing your reports and summaries."
+      : (claudeAI ? "Claude is your live analyst." : "Analyst in template mode. Connect Bedrock or open on claude.ai for live AI.");
+    await refreshFeed();
+    await refreshChain();
+    setInterval(refreshFeed, 3000);
+  } catch (e) {
+    server.up = false;
+    renderStatus(null);
+    renderHoneypots(DEMO.honeypots);
+    $("aiNote").textContent = claudeAI
+      ? "Claude is your live analyst." : "Demo mode in your browser. Run the Python app or open on claude.ai for the real thing.";
+    $("chainText").textContent = "Intact (demo)";
+  }
+}
+
+function renderStatus(s) {
+  const data = s || { total_events: liveEvents.length, known_devices: demoDevices.size, evidence_intact: true, ai_mode: "demo" };
+  $("statusRow").innerHTML =
+    '<div class="chip">Decoys <b>3 armed</b></div>' +
+    '<div class="chip">Events <b>' + data.total_events + '</b></div>' +
+    '<div class="chip">Devices seen <b>' + data.known_devices + '</b></div>' +
+    '<div class="chip good">Evidence <b>' + (data.evidence_intact ? "intact" : "ALTERED") + '</b></div>' +
+    '<div class="chip">Analyst <b>' + (server.ai ? "Bedrock" : claudeAI ? "Claude" : data.ai_mode) + '</b></div>';
+}
+
+function renderHoneypots(list) {
+  $("hpList").innerHTML = list.map(h =>
+    '<div class="hp"><i></i><div>' + h.name + '<div class="mono">port ' + h.port + ' &middot; listening</div></div></div>').join("");
+}
+
+function label(e) {
+  const d = e.details || {};
+  if (e.type === "login_attempt") return "Login tried: " + (d.user || "?") + " / " + (d.pass || "?") + (d.is_default ? " (factory default)" : "");
+  if (e.type === "port_scan") return "Port scan across your decoys";
+  if (e.type === "attack") return e.attack ? e.attack.name : "Suspicious request";
+  return "Connection to a decoy";
+}
+
+function eventRow(e) {
+  const time = (e.time || "").replace("T", " ").replace(/(\+.*|Z)$/, "").slice(11) || "now";
+  const att = e.attack ? '<span class="att">' + e.attack.id + " " + e.attack.name + "</span>" : "";
+  const isNew = e.new_device ? '<span class="new-badge">NEW DEVICE</span>' : "";
+  return '<div class="event ' + e.severity + '"><div class="t">' + time + '</div>' +
+    '<div class="main"><b>' + escapeHtml(label(e)) + "</b>" + isNew +
+    '<div class="src">' + escapeHtml(e.src_ip) + " &rarr; " + escapeHtml(e.service) + "</div>" + att + "</div>" +
+    '<div class="tag ' + e.severity + '">' + e.severity + "</div></div>";
+}
+
+function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t == null ? "" : t; return d.innerHTML; }
+
+async function refreshFeed() {
+  if (!server.up) return;
+  try {
+    const { events } = await api("api/recent");
+    paintFeed(events);
+    renderStatus(await api("api/status"));
+  } catch (e) {}
+}
+
+function paintFeed(events) {
+  const feed = $("feed");
+  if (!events.length) { feed.innerHTML = '<div class="empty">All quiet. Launch a test attack to see HoneyHome work.</div>'; return; }
+  feed.innerHTML = events.map(eventRow).join("");
+  $("feedCount").textContent = events.length + " shown";
+  const newest = events[0];
+  const unseen = newest && !seenSeqs.has(newest.seq);
+  events.forEach(e => seenSeqs.add(e.seq));
+  if (unseen && newest.severity === "high" && newest.spoken) speak(newest.spoken);
+}
+
+async function refreshChain() {
+  if (!server.up) return;
+  try {
+    const { check } = await api("api/evidence");
+    $("chain").className = "chain " + (check.intact ? "ok" : "bad");
+    $("chainText").textContent = check.intact ? "Intact &middot; " + check.records + " records sealed" : "ALTERED at record " + check.problem_at;
+  } catch (e) {}
+}
+
+$("btnAttack").onclick = async () => {
+  $("btnAttack").disabled = true; $("btnAttack").textContent = "Attack running\u2026";
+  try {
+    if (server.up) { await api("api/simulate", { method: "POST" }); await sleep(800); await refreshFeed(); await refreshChain(); }
+    else await runDemoAttack();
+  } catch (e) {}
+  $("btnAttack").disabled = false; $("btnAttack").textContent = "Launch a test attack";
+};
+
+$("btnReport").onclick = async () => {
+  $("btnReport").disabled = true;
+  $("reportCard").classList.remove("hidden");
+  $("reportText").textContent = "Writing report\u2026";
+  try {
+    let text;
+    if (server.up) text = (await api("api/report", { method: "POST" })).report;
+    else if (claudeAI) text = await claudeReport();
+    else text = demoReport();
+    $("reportText").textContent = text;
+    $("reportCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) { $("reportText").textContent = demoReport(); }
+  $("btnReport").disabled = false;
+};
+
+$("btnVerify").onclick = async () => {
+  if (server.up) {
+    await refreshChain();
+    const { check } = await api("api/evidence");
+    speak(check.intact ? "Evidence intact. " + check.records + " records sealed and unchanged." : "Warning, the log was altered at record " + check.problem_at + ".");
+  } else speak("Evidence intact. All records are sealed and unchanged.");
+};
+
+$("btnSpeak").onclick = async () => {
+  if (server.up) speak((await api("api/summary")).spoken);
+  else speak(demoSummary());
+};
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Voice: Polly from the server if available, else the browser voice
+let speechToken = 0, currentAudio = null;
+function pickVoice() {
+  const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+  return en.find(v => /natural|neural|google|niamh|aria|emily/i.test(v.name)) || en.find(v => v.lang === "en-IE") || en.find(v => v.lang === "en-GB") || en[0];
+}
+async function speak(text) {
+  speechToken++; const token = speechToken;
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  if (usePolly && server.up) {
+    try {
+      const res = await fetch("api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      if (res.status === 200) {
+        const url = URL.createObjectURL(await res.blob());
+        if (token !== speechToken) return;
+        currentAudio = new Audio(url); currentAudio.play().catch(() => {});
+        return;
+      }
+      usePolly = false;
+    } catch (e) { usePolly = false; }
+  }
+  if (!("speechSynthesis" in window)) return;
+  const sentences = (text.match(/[^.!?]+[.!?]*/g) || [text]).map(s => s.trim()).filter(Boolean);
+  let i = 0; const voice = pickVoice();
+  const next = () => {
+    if (token !== speechToken || i >= sentences.length) return;
+    const u = new SpeechSynthesisUtterance(sentences[i++]);
+    if (voice) { u.voice = voice; u.lang = voice.lang; }
+    u.rate = 0.98; u.pitch = 1.03;
+    u.onend = () => setTimeout(next, 180);
+    speechSynthesis.speak(u);
+  };
+  next();
+}
+if ("speechSynthesis" in window) speechSynthesis.getVoices();
+
+
+// Built-in demo (used on GitHub Pages, no server)
+const DEMO = { honeypots: [
+  { name: "Fake IP camera", port: 8081 },
+  { name: "Fake old router (telnet)", port: 2323 },
+  { name: "Fake file server", port: 8445 },
+]};
+let liveEvents = [];
+let demoDevices = new Set();
+
+const DEMO_SCRIPT = [
+  { type: "connection", service: "Fake IP camera", severity: "low", new_device: true },
+  { type: "port_scan", service: "multiple services", severity: "high", attack: { id: "T1046", name: "Network service discovery" } },
+  { type: "connection", service: "Fake old router (telnet)", severity: "low" },
+  { type: "login_attempt", service: "Fake IP camera", severity: "high", details: { user: "admin", pass: "admin", is_default: true }, attack: { id: "T1078", name: "Valid accounts (default login)" } },
+  { type: "login_attempt", service: "Fake old router (telnet)", severity: "high", details: { user: "root", pass: "root", is_default: true }, attack: { id: "T1078", name: "Valid accounts (default login)" } },
+  { type: "attack", service: "Fake file server", severity: "high", details: { path: "/../../etc/passwd" }, attack: { id: "T1083", name: "File and directory discovery" } },
+  { type: "attack", service: "Fake file server", severity: "medium", details: { path: "/.env" }, attack: { id: "T1595", name: "Active scanning" } },
+];
+
+async function runDemoAttack() {
+  const ip = "192.168.0." + (20 + Math.floor(Math.random() * 60));
+  demoDevices.add(ip);
+  for (let k = 0; k < DEMO_SCRIPT.length; k++) {
+    const e = Object.assign({ seq: liveEvents.length + 1, time: new Date().toISOString(), src_ip: ip, port: 0, details: {} }, DEMO_SCRIPT[k]);
+    e.new_device = k === 0;
+    e.spoken = demoSpoken(e);
+    liveEvents.unshift(e);
+    paintFeed(liveEvents.slice(0, 40));
+    renderStatus(null);
+    await sleep(850);
+  }
+}
+
+function demoSpoken(e) {
+  const who = e.new_device ? "an unknown device" : "the device at " + e.src_ip;
+  if (e.type === "login_attempt") return "Security alert. " + who + " just tried to log into your " + e.service + " with " + e.details.user + " and " + e.details.pass + ", the factory password.";
+  if (e.type === "port_scan") return "Security alert. " + who + " is scanning your network for open doors.";
+  if (e.type === "attack") return "Security alert. On your " + e.service + ", " + who + " is trying to reach files it shouldn't.";
+  return who + " connected to your " + e.service + ".";
+}
+
+function demoSummary() {
+  if (!liveEvents.length) return "All quiet. Nothing has touched your decoys yet.";
+  const highs = liveEvents.filter(e => e.severity === "high").length;
+  return "Here's what happened. " + liveEvents.length + " events from " + demoDevices.size + " device, including default-password login attempts and a port scan. " + highs + " were serious.";
+}
+
+function demoReport() {
+  const now = new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  const ip = [...demoDevices][0] || "unknown";
+  return "HOME NETWORK INCIDENT REPORT\nGenerated: " + now + "\n\n" +
+    "SUMMARY\nThe decoy devices recorded " + liveEvents.length + " events from 1 source address (" + ip + ").\n" +
+    "This device scanned the network, then tried factory-default logins and attempted to read system files.\n\n" +
+    "MITRE ATT&CK TECHNIQUES OBSERVED\n  T1046  Network service discovery (port scan)\n  T1078  Valid accounts (default login attempts)\n  T1083  File and directory discovery (path traversal)\n\n" +
+    "EVIDENCE INTEGRITY\n  Intact. Every record is sealed in a SHA-256 hash chain and has not been altered.\n\n" +
+    "RECOMMENDATIONS\n  - These were decoys, so nothing real was breached.\n  - Block the source address on your router if it returns.\n  - Never leave factory-default passwords on real cameras or routers.\n\n" +
+    "(Demo report. Run the Python app with Amazon Bedrock, or open on claude.ai, for an AI-written report.)";
+}
+
+async function claudeReport() {
+  const lines = liveEvents.slice(0, 30).map(e => e.time + " | " + e.type + " | " + e.src_ip + " | " + e.service + " | " + JSON.stringify(e.details || {})).join("\n");
+  const prompt = "You are a security analyst. Write a short, professional home-network incident report from these honeypot (decoy) events. Headings: Summary, Timeline, Attacker behaviour, MITRE ATT&CK techniques, Evidence integrity, Recommendations. Calm and factual, clear to a non-expert but credible to a professional. Evidence chain is intact. Events:\n" + lines;
+  try { return await claudeAI.text(prompt, { modelTier: "quick" }); }
+  catch (e) { return demoReport(); }
+}
+
+let booted = false;
+function boot() { if (booted) return; booted = true; checkServer(); }
+boot();
+</script>
+</body>
+</html>

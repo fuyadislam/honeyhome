@@ -1,0 +1,5 @@
+mcp>=2.3.0
+uvicorn
+starlette
+boto3
+python-dotenv
